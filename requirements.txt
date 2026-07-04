@@ -1,6 +1,6 @@
-fastapi==0.100.0
-uvicorn==0.23.2
-httpx==0.24.1
-supabase==1.0.3
-openai==1.1.0
-pydantic==1.10.7
+fastapi
+uvicorn
+httpx
+supabase
+openai
+pydantic
