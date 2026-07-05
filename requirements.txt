@@ -4,3 +4,4 @@ httpx
 supabase
 openai
 pydantic
+line-bot-sdk
