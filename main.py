@@ -9,10 +9,15 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
+@app.get("/")
+def read_root():
+    return {"message": "My Echo is running!"}
+
 @app.post("/callback")
 async def callback(request: Request):
     signature = request.headers.get("X-Line-Signature")
     body = await request.body()
+    # ここでハンドラーを動かす
     handler.handle(body.decode("utf-8"), signature)
     return {"status": "ok"}
 
@@ -20,14 +25,16 @@ async def callback(request: Request):
 def handle_message(event):
     user_text = event.message.text
     
-    # ChatGPTに「自分の取扱説明書」としての分析を依頼
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "あなたはユーザーの思考の癖を分析するAIです。短く、洞察に満ちた返答をしてください。"},
-            {"role": "user", "content": user_text}
-        ]
-    )
-    
-    ai_reply = response.choices[0].message.content
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=ai_reply))
+    # 応答内容を生成
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "あなたはユーザーの思考の癖を分析するAIです。短く、洞察に満ちた返答をしてください。"},
+                {"role": "user", "content": user_text}
+            ]
+        )
+        ai_reply = response.choices[0].message.content
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=ai_reply))
+    except Exception as e:
+        print(f"Error: {e}")
