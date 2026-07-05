@@ -45,17 +45,24 @@ def handle_message(event):
             d["step"] = 3
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="【3/3】休日の過ごし方は？"))
             return
+      # (先ほどのコードの 3問目判定部分を以下に差し替えてください)
         elif d["step"] == 3:
-            # 診断終了と判定
-            prompt = f"回答:{d['answers']}。性格タイプを1つ判定し、一言で結果を伝えて。"
-            res = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
-            personality = res.choices[0].message.content
+            # 診断終了処理
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="診断を分析中です..."))
             
-            # user_logs に保存
-            supabase.table("user_logs").insert({"user_id": user_id, "user_message": "診断結果", "ai_response": personality}).execute()
-            
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"診断完了！あなたのタイプは「{personality}」です。"))
-            del user_diagnoses[user_id] # 診断解除
+            try:
+                prompt = f"回答:{d['answers']}。性格タイプを1つ判定し、一言で結果を伝えて。"
+                res = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
+                personality = res.choices[0].message.content
+                
+                # DB保存
+                supabase.table("user_logs").insert({"user_id": user_id, "user_message": "診断結果", "ai_response": personality}).execute()
+                
+                line_bot_api.push_message(user_id, TextSendMessage(text=f"診断完了！あなたのタイプは「{personality}」です。"))
+                del user_diagnoses[user_id]
+            except Exception as e:
+                line_bot_api.push_message(user_id, TextSendMessage(text=f"エラーが発生しました: {str(e)}"))
+                del user_diagnoses[user_id]
             return
 
     # 通常分析（診断が完了した人だけ）
