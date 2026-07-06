@@ -38,12 +38,14 @@ def handle_message(event):
         d = user_diagnoses[user_id]
         d["answers"].append(text)
         
+# 修正箇所: 100問ロジックの中
         if len(d["answers"]) < 100:
             next_q = QUESTIONS[len(d["answers"])]
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"【{len(d['answers'])}/100】\n{next_q}"))
+            # reply_message を push_message に変更
+            line_bot_api.push_message(user_id, TextSendMessage(text=f"【{len(d['answers'])}/100】\n{next_q}"))
         else:
             # 100問終了！AIによる分析
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="診断終了！分析しています..."))
+            line_bot_api.push_message(user_id, TextSendMessage(text="診断終了！分析しています..."))            
             prompt = f"MBTI診断100問の回答:{d['answers']}。あなたのタイプを分析し、専属コーチとして性格特性を詳細に教えて。"
             res = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
             result = res.choices[0].message.content
