@@ -5,16 +5,17 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from supabase import create_client
 from openai import OpenAI
 
-# 初期化
 app = FastAPI()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-# ※環境変数の SUPABASE_KEY は必ず「service_role」キーを設定してください
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
 
-# 診断状態をメモリで管理
+# 診断状態（step: 何問目か, answers: 回答リスト）
 user_diagnoses = {}
+
+# 100問の質問リスト（簡易版として配列を用意）
+QUESTIONS = [f"質問{i}: (MBTI診断用の質問{i}) 1:そう思う〜5:そう思わない" for i in range(1, 101)]
 
 @app.post("/callback")
 async def callback(request: Request):
@@ -28,55 +29,35 @@ def handle_message(event):
     user_id = event.source.user_id
     text = event.message.text
 
-    # 1. 診断開始コマンド
     if text == "診断開始":
-        user_diagnoses[user_id] = {"step": 1, "answers": []}
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="【1/3】仕事で何を重視しますか？"))
+        user_diagnoses[user_id] = {"step": 0, "answers": []}
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"MBTI診断を開始します！\n{QUESTIONS[0]}\n(回答を入力してください)"))
         return
 
-    # 2. 診断中ロジック
     if user_id in user_diagnoses:
         d = user_diagnoses[user_id]
         d["answers"].append(text)
         
-        if d["step"] == 1:
-            d["step"] = 2
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="【2/3】チームでの役割は？"))
-            return
-        elif d["step"] == 2:
-            d["step"] = 3
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="【3/3】休日の過ごし方は？"))
-            return
-        elif d["step"] == 3:
-            # 診断終了と判定
-            prompt = f"回答:{d['answers']}。この回答から性格タイプを1つ判定し、一言で結果を伝えて。"
+        if len(d["answers"]) < 100:
+            next_q = QUESTIONS[len(d["answers"])]
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"【{len(d['answers'])}/100】\n{next_q}"))
+        else:
+            # 100問終了！AIによる分析
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="診断終了！分析しています..."))
+            prompt = f"MBTI診断100問の回答:{d['answers']}。あなたのタイプを分析し、専属コーチとして性格特性を詳細に教えて。"
             res = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
-            personality = res.choices[0].message.content
+            result = res.choices[0].message.content
             
-            # logs テーブルに保存
-            supabase.table("logs").insert({
-                "user_id": user_id, 
-                "message": "診断結果", 
-                "ai_reply": personality
-            }).execute()
-            
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"診断完了！あなたのタイプは「{personality}」です。"))
+            supabase.table("chat_logs").insert({"user_id": user_id, "message": "診断結果", "ai_reply": result}).execute()
+            line_bot_api.push_message(user_id, TextSendMessage(text=f"【診断結果】\n{result}"))
             del user_diagnoses[user_id]
-            return
+        return
 
-    # 3. 通常分析（診断が完了している人向け）
-    # 直近の ai_reply を取得
-    res = supabase.table("logs").select("ai_reply").eq("user_id", user_id).order("id", desc=True).limit(1).execute()
-    personality = res.data[0]['ai_reply'] if res.data else "未設定"
-    
-    prompt = f"専属コーチとして分析。性格:{personality}。入力:{text}。"
-    ai_resp = client.chat.completions.create(model="gpt-4o", messages=[{"role": "user", "content": prompt}])
-    
-    # ログを保存
-    supabase.table("logs").insert({
-        "user_id": user_id,
-        "message": text,
-        "ai_reply": ai_resp.choices[0].message.content
-    }).execute()
-    
+    # 通常相談モード（診断完了後）
+    res = supabase.table("chat_logs").select("ai_reply").eq("user_id", user_id).order("id", desc=True).limit(1).execute()
+    profile = res.data[0]['ai_reply'] if res.data else "未診断"
+    ai_resp = client.chat.completions.create(model="gpt-4o", messages=[
+        {"role": "system", "content": f"あなたはユーザーの専属コーチです。ユーザーのMBTI分析結果はこれです: {profile}"},
+        {"role": "user", "content": text}
+    ])
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=ai_resp.choices[0].message.content))
