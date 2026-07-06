@@ -33,10 +33,9 @@ async def callback(request: Request):
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_id = event.source.user_id
-    text = event.text
-
-    # ログに出力して動作確認
-    print(f"受信メッセージ: {text} / ユーザーID: {user_id}")
+    text = event.message.text
+    
+    print(f"受信メッセージ: {text} / ユーザーID: {user_id}")}")
 
     # 1. 占い機能（占いと打つと今日の運勢を出す）
     if text == "占い":
