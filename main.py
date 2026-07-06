@@ -56,7 +56,7 @@ def handle_message(event):
                 personality = res.choices[0].message.content
                 
                 # DB保存
-                supabase.table("user_logs").insert({"user_id": user_id, "user_message": "診断結果", "ai_response": personality}).execute()
+                supabase.table("logs").insert({"user_id": user_id, "user_message": "診断結果", "ai_response": personality}).execute()
                 
                 line_bot_api.push_message(user_id, TextSendMessage(text=f"診断完了！あなたのタイプは「{personality}」です。"))
                 del user_diagnoses[user_id]
